@@ -1,0 +1,9 @@
+{
+  "name": "Guard Nigeria",
+  "description": "A citizen security reporting platform empowering Nigerians to safely report incidents, fostering transparency and rapid response.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "geolocation"
+  ]
+}

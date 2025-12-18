@@ -4,8 +4,6 @@ import { IncidentMap } from "./IncidentMap";
 import { UserManagement } from "./UserManagement";
 import { AgencyManagement } from "./AgencyManagement";
 import { fetchLiveSecurityNews } from "../services/geminiService";
-import { collection, query, where, onSnapshot } from "firebase/firestore";
-import { db } from "../services/firebase";
 import {
   BarChart,
   Bar,
@@ -39,18 +37,8 @@ import {
   RefreshCw,
   Building,
   LayoutDashboard,
-  X,
-  MapPin,
-  Calendar,
 } from "lucide-react";
-import {
-  IncidentStatus,
-  SeverityLevel,
-  SecurityNewsItem,
-  LogEntry,
-  IncidentReport,
-} from "../types";
-import { subscribeToLogs } from "../services/logService";
+import { IncidentStatus, SeverityLevel, SecurityNewsItem } from "../types";
 
 const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042", "#8884d8"];
 const STATUS_COLORS = {
@@ -60,6 +48,58 @@ const STATUS_COLORS = {
   [IncidentStatus.Resolved]: "#22c55e",
 };
 
+interface LogEntry {
+  id: string;
+  action: string;
+  details: string;
+  role: string;
+  timestamp: number;
+  type: "view" | "edit" | "security" | "system";
+}
+
+const MOCK_LOGS: LogEntry[] = [
+  {
+    id: "1",
+    action: "Status Update",
+    details: 'Changed Incident #8392 to "Resolved"',
+    role: "Admin (Lagos)",
+    timestamp: Date.now() - 1000 * 60 * 5,
+    type: "edit",
+  },
+  {
+    id: "2",
+    action: "Data Export",
+    details: "Downloaded monthly security report CSV",
+    role: "Super Admin",
+    timestamp: Date.now() - 1000 * 60 * 45,
+    type: "system",
+  },
+  {
+    id: "3",
+    action: "Sensitive View",
+    details: "Accessed detailed report for Incident #1102",
+    role: "Admin (Abuja)",
+    timestamp: Date.now() - 1000 * 60 * 60 * 2,
+    type: "view",
+  },
+  {
+    id: "4",
+    action: "Login Attempt",
+    details: "Failed login attempt from IP 192.168.1.1",
+    role: "System",
+    timestamp: Date.now() - 1000 * 60 * 60 * 5,
+    type: "security",
+  },
+  {
+    id: "5",
+    action: "Status Update",
+    details: 'Changed Incident #2291 to "In Progress"',
+    role: "Admin (Kano)",
+    timestamp: Date.now() - 1000 * 60 * 60 * 24,
+    type: "edit",
+  },
+];
+
 type AdminTab = "overview" | "users" | "agencies";
 
 export const AdminDashboard: React.FC = () => {
@@ -68,37 +108,6 @@ export const AdminDashboard: React.FC = () => {
   const [newsFeed, setNewsFeed] = useState<SecurityNewsItem[]>([]);
   const [isLoadingNews, setIsLoadingNews] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
-  const [activeAgencies, setActiveAgencies] = useState(0);
-  const [logs, setLogs] = useState<LogEntry[]>([]);
-  const [showAllLogs, setShowAllLogs] = useState(false);
-  const [selectedIncident, setSelectedIncident] =
-    useState<IncidentReport | null>(null);
-
-  // Subscribe to Real Logs
-  useEffect(() => {
-    // Determine limit based on view mode (only fetch more if viewing all, though standard subscription is fine)
-    // For now, let's subscribe to latest 50 logs always, and just show 5 in the dashboard
-    const unsubscribe = subscribeToLogs((fetchedLogs) => {
-      setLogs(fetchedLogs);
-    }, 50);
-
-    return () => unsubscribe();
-  }, []);
-
-  // Fetch active agencies count
-  useEffect(() => {
-    const q = query(
-      collection(db, "users"),
-      where("role", "==", "agency"),
-      where("isActive", "==", true)
-    );
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      setActiveAgencies(snapshot.size);
-    });
-
-    return () => unsubscribe();
-  }, []);
 
   // Fetch Live News on Mount
   useEffect(() => {
@@ -213,9 +222,7 @@ export const AdminDashboard: React.FC = () => {
           <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-500">Active Units</p>
-              <p className="text-3xl font-bold text-purple-600">
-                {activeAgencies}
-              </p>
+              <p className="text-3xl font-bold text-purple-600">142</p>
             </div>
             <div className="p-3 bg-purple-50 rounded-full text-purple-600">
               <Users className="h-6 w-6" />
@@ -482,10 +489,7 @@ export const AdminDashboard: React.FC = () => {
                     {new Date(incident.timestamp).toLocaleDateString()}
                   </td>
                   <td className="px-6 py-4 text-right">
-                    <button
-                      onClick={() => setSelectedIncident(incident)}
-                      className="text-blue-600 hover:text-blue-800 font-medium text-xs"
-                    >
+                    <button className="text-blue-600 hover:text-blue-800 font-medium text-xs">
                       View Details
                     </button>
                   </td>
@@ -506,283 +510,56 @@ export const AdminDashboard: React.FC = () => {
             <Lock className="h-5 w-5 text-gray-400" />
             System Audit Log
           </h3>
-          <button
-            onClick={() => setShowAllLogs(true)}
-            className="text-sm text-blue-600 hover:text-blue-800 font-medium"
-          >
+          <button className="text-sm text-blue-600 hover:text-blue-800 font-medium">
             View Full Log
           </button>
         </div>
         <div className="divide-y divide-gray-100">
-          {logs.length === 0 ? (
-            <div className="p-8 text-center text-gray-500">
-              No recent activity recorded.
-            </div>
-          ) : (
-            logs.slice(0, 5).map((log) => (
-              <div
-                key={log.id}
-                className="p-4 flex items-center justify-between hover:bg-gray-50 transition-colors"
-              >
-                <div className="flex items-center gap-4">
-                  <div
-                    className={`p-2 rounded-lg ${
-                      log.type === "security"
-                        ? "bg-red-50 text-red-600"
-                        : log.type === "edit"
-                        ? "bg-orange-50 text-orange-600"
-                        : log.type === "system"
-                        ? "bg-blue-50 text-blue-600"
-                        : "bg-gray-100 text-gray-600"
-                    }`}
-                  >
-                    {log.type === "security" ? (
-                      <Shield className="h-4 w-4" />
-                    ) : log.type === "edit" ? (
-                      <RefreshCw className="h-4 w-4" />
-                    ) : log.type === "system" ? (
-                      <Download className="h-4 w-4" />
-                    ) : (
-                      <Eye className="h-4 w-4" />
-                    )}
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-gray-900">
-                      {log.action}
-                    </p>
-                    <p className="text-xs text-gray-500">{log.details}</p>
-                  </div>
+          {MOCK_LOGS.map((log) => (
+            <div
+              key={log.id}
+              className="p-4 flex items-center justify-between hover:bg-gray-50 transition-colors"
+            >
+              <div className="flex items-center gap-4">
+                <div
+                  className={`p-2 rounded-lg ${
+                    log.type === "security"
+                      ? "bg-red-50 text-red-600"
+                      : log.type === "edit"
+                      ? "bg-orange-50 text-orange-600"
+                      : log.type === "system"
+                      ? "bg-blue-50 text-blue-600"
+                      : "bg-gray-100 text-gray-600"
+                  }`}
+                >
+                  {log.type === "security" ? (
+                    <Shield className="h-4 w-4" />
+                  ) : log.type === "edit" ? (
+                    <RefreshCw className="h-4 w-4" />
+                  ) : log.type === "system" ? (
+                    <Download className="h-4 w-4" />
+                  ) : (
+                    <Eye className="h-4 w-4" />
+                  )}
                 </div>
-                <div className="text-right">
-                  <p className="text-xs font-medium text-gray-900">
-                    {log.role}
+                <div>
+                  <p className="text-sm font-medium text-gray-900">
+                    {log.action}
                   </p>
-                  <p className="text-xs text-gray-400 flex items-center gap-1 justify-end mt-0.5">
-                    <Clock className="h-3 w-3" />
-                    {new Date(log.timestamp).toLocaleTimeString()}
-                  </p>
+                  <p className="text-xs text-gray-500">{log.details}</p>
                 </div>
               </div>
-            ))
-          )}
-        </div>
-      </div>
-
-      {/* View Full Log Modal */}
-      {showAllLogs && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl shadow-xl max-w-4xl w-full max-h-[80vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
-            <div className="p-6 border-b border-gray-100 flex justify-between items-center">
-              <h3 className="text-xl font-bold text-gray-900">
-                Full System Audit Log
-              </h3>
-              <button
-                onClick={() => setShowAllLogs(false)}
-                className="p-1 hover:bg-gray-100 rounded-full transition-colors"
-              >
-                <X className="h-6 w-6 text-gray-500" />
-              </button>
-            </div>
-            <div className="overflow-y-auto p-6">
-              <div className="divide-y divide-gray-100">
-                {logs.length === 0 ? (
-                  <div className="text-center py-10 text-gray-500">
-                    No logs found.
-                  </div>
-                ) : (
-                  logs.map((log) => (
-                    <div
-                      key={log.id}
-                      className="p-4 flex items-center justify-between hover:bg-gray-50 transition-colors"
-                    >
-                      <div className="flex items-center gap-4">
-                        <div
-                          className={`p-2 rounded-lg ${
-                            log.type === "security"
-                              ? "bg-red-50 text-red-600"
-                              : log.type === "edit"
-                              ? "bg-orange-50 text-orange-600"
-                              : log.type === "system"
-                              ? "bg-blue-50 text-blue-600"
-                              : "bg-gray-100 text-gray-600"
-                          }`}
-                        >
-                          {log.type === "security" ? (
-                            <Shield className="h-4 w-4" />
-                          ) : log.type === "edit" ? (
-                            <RefreshCw className="h-4 w-4" />
-                          ) : log.type === "system" ? (
-                            <Download className="h-4 w-4" />
-                          ) : (
-                            <Eye className="h-4 w-4" />
-                          )}
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-gray-900">
-                            {log.action}
-                          </p>
-                          <p className="text-sm text-gray-500">{log.details}</p>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-sm font-medium text-gray-900">
-                          {log.role}
-                        </p>
-                        <p className="text-xs text-gray-400 flex items-center gap-1 justify-end mt-0.5">
-                          <Clock className="h-3 w-3" />
-                          {new Date(log.timestamp).toLocaleString()}
-                        </p>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-      {/* Incident Details Modal */}
-      {selectedIncident && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl shadow-xl max-w-2xl w-full flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
-            <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-              <div>
-                <h3 className="text-xl font-bold text-gray-900">
-                  Incident Details
-                </h3>
-                <p className="text-sm text-gray-500 font-mono">
-                  ID: #{selectedIncident.id}
+              <div className="text-right">
+                <p className="text-xs font-medium text-gray-900">{log.role}</p>
+                <p className="text-xs text-gray-400 flex items-center gap-1 justify-end mt-0.5">
+                  <Clock className="h-3 w-3" />
+                  {new Date(log.timestamp).toLocaleTimeString()}
                 </p>
               </div>
-              <button
-                onClick={() => setSelectedIncident(null)}
-                className="p-1 hover:bg-gray-200 rounded-full transition-colors"
-                title="Close"
-              >
-                <X className="h-6 w-6 text-gray-500" />
-              </button>
             </div>
-
-            <div className="p-6 overflow-y-auto max-h-[70vh]">
-              <div className="space-y-6">
-                {/* Status Badge */}
-                <div className="flex items-center justify-between">
-                  <span
-                    className={`px-3 py-1 rounded-full text-sm font-medium ${
-                      selectedIncident.severity === SeverityLevel.Critical
-                        ? "bg-red-100 text-red-700"
-                        : selectedIncident.severity === SeverityLevel.High
-                        ? "bg-orange-100 text-orange-700"
-                        : "bg-green-100 text-green-700"
-                    }`}
-                  >
-                    {selectedIncident.severity} Severity
-                  </span>
-                  <span
-                    className={`px-3 py-1 rounded-full text-sm font-medium border ${
-                      selectedIncident.status === IncidentStatus.Resolved
-                        ? "bg-green-50 text-green-700 border-green-200"
-                        : "bg-blue-50 text-blue-700 border-blue-200"
-                    }`}
-                  >
-                    {selectedIncident.status}
-                  </span>
-                </div>
-
-                {/* Description */}
-                <div>
-                  <h4 className="text-sm font-semibold text-gray-900 mb-2">
-                    Description
-                  </h4>
-                  <p className="text-gray-600 bg-gray-50 p-4 rounded-lg">
-                    {selectedIncident.description}
-                  </p>
-                </div>
-
-                {/* Meta Data Grid */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="flex items-center gap-3 p-3 border border-gray-100 rounded-lg">
-                    <div className="p-2 bg-blue-50 text-blue-600 rounded-lg">
-                      <MapPin className="h-5 w-5" />
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-500">Location</p>
-                      <p className="text-sm font-medium text-gray-900 truncate">
-                        {selectedIncident.location?.address ||
-                          "Coordinates only"}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-3 p-3 border border-gray-100 rounded-lg">
-                    <div className="p-2 bg-purple-50 text-purple-600 rounded-lg">
-                      <Calendar className="h-5 w-5" />
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-500">Date & Time</p>
-                      <p className="text-sm font-medium text-gray-900">
-                        {new Date(selectedIncident.timestamp).toLocaleString()}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-3 p-3 border border-gray-100 rounded-lg">
-                    <div className="p-2 bg-orange-50 text-orange-600 rounded-lg">
-                      <Shield className="h-5 w-5" />
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-500">Type</p>
-                      <p className="text-sm font-medium text-gray-900">
-                        {selectedIncident.type}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-3 p-3 border border-gray-100 rounded-lg">
-                    <div className="p-2 bg-gray-100 text-gray-600 rounded-lg">
-                      <Users className="h-5 w-5" />
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-500">Reported By</p>
-                      <p className="text-sm font-medium text-gray-900">
-                        {selectedIncident.isAnonymous
-                          ? "Anonymous Citizen"
-                          : selectedIncident.userId || "Unknown"}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Media (if available) */}
-                {selectedIncident.media?.image && (
-                  <div>
-                    <h4 className="text-sm font-semibold text-gray-900 mb-2">
-                      Evidence / Media
-                    </h4>
-                    <img
-                      src={selectedIncident.media.image}
-                      alt="Incident Evidence"
-                      className="rounded-lg w-full h-64 object-cover border border-gray-200"
-                    />
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="p-6 border-t border-gray-100 bg-gray-50 flex justify-end gap-3">
-              <button
-                onClick={() => setSelectedIncident(null)}
-                className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-white transition-colors text-sm font-medium"
-              >
-                Close
-              </button>
-              <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium">
-                Update Status
-              </button>
-            </div>
-          </div>
+          ))}
         </div>
-      )}
+      </div>
     </div>
   );
 };

@@ -1,0 +1,47 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper function to check if user is authenticated
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    // Helper function to get user role from custom claims or user document
+    function getUserRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+    
+    // Users collection
+    match /users/{userId} {
+      // Users can read their own profile
+      allow read: if isSignedIn() && request.auth.uid == userId;
+      
+      // Users can create their own profile during signup
+      allow create: if isSignedIn() && request.auth.uid == userId;
+      
+      // Users can update their own profile
+      allow update: if isSignedIn() && request.auth.uid == userId;
+      
+      // Admins can do everything (check role directly)
+      allow read, create, update, delete: if isSignedIn() && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+    
+    // Incidents collection - SIMPLIFIED RULES
+    match /incidents/{incidentId} {
+      // Anyone authenticated can read incidents
+      allow read: if isSignedIn();
+      
+      // Anyone authenticated can create incidents
+      allow create: if isSignedIn();
+      
+      // Anyone authenticated can update incidents (we'll handle role checks in app logic)
+      allow update: if isSignedIn();
+      
+      // Anyone authenticated can delete (we'll handle role checks in app logic)
+      // In production, you might want to restrict this more
+      allow delete: if isSignedIn();
+    }
+  }
+}

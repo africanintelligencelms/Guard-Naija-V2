@@ -11,6 +11,8 @@ export const INCIDENT_CATEGORIES = [
   { value: IncidentType.SuspiciousActivity, label: "Suspicious Activity", color: "text-gray-600" },
 ];
 
+
+
 // Mock Data for Dashboard
 export const MOCK_INCIDENTS: IncidentReport[] = [
   {

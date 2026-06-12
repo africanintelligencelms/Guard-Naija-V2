@@ -37,10 +37,14 @@ AI categorization + news.
 
 ## Phases
 
-**Phase 1 — Foundation (unblocks everything)**
-Build-time Tailwind with design tokens; react-router with lazy route chunks;
-`components/ui/` primitives (BottomNav, PrimaryButton, IncidentCard,
-StatusBadge, TextField, EmptyState…); Firestore offline persistence.
+**Phase 1 — Foundation (unblocks everything)** ✅ DONE
+Build-time Tailwind with design tokens; react-router with lazy route chunks
+(admin/agency/report/chat split out of the citizen entry); `components/ui/`
+primitives (BottomNav, AppHeader, IncidentCard, StatusBadge, StatCard,
+TextField, SegmentedTabs, ListTile, EmptyState, Skeleton, OfflineBanner);
+Firestore offline persistence (IndexedDB cache); bounded admin/agency reads
+(`limit(200)`); first-pass mobile citizen screens (Home, My Reports,
+Start Report, Map placeholder, Profile) behind a bottom tab shell.
 
 **Phase 2 — Security & backend**
 New Firestore/Storage rules; Cloud Functions (`analyzeIncident`, `safetyChat`,

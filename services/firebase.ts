@@ -1,10 +1,13 @@
 import { initializeApp } from "firebase/app";
-import { getFirestore } from "firebase/firestore";
-import { getStorage } from "firebase/storage";
+import {
+  Firestore,
+  getFirestore,
+  initializeFirestore,
+  persistentLocalCache,
+  persistentSingleTabManager,
+} from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 
-// TODO: Replace with your actual Firebase project configuration
-// You can copy this from the Firebase Console -> Project Settings -> General -> Your Apps
 // Firebase project configuration using Vite environment variables
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY as string,
@@ -19,7 +22,21 @@ const firebaseConfig = {
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 
-// Initialize services
-export const db = getFirestore(app);
-export const storage = getStorage(app);
+// Offline-first: persist Firestore cache in IndexedDB so reads serve
+// instantly and writes queue while offline (2G/3G users, dead zones).
+let firestore: Firestore;
+try {
+  firestore = initializeFirestore(app, {
+    localCache: persistentLocalCache({
+      tabManager: persistentSingleTabManager({}),
+    }),
+  });
+} catch {
+  // Private browsing / unsupported storage — fall back to in-memory cache
+  firestore = getFirestore(app);
+}
+
+export const db = firestore;
 export const auth = getAuth(app);
+// NOTE: firebase/storage is intentionally NOT loaded here — it joins the
+// lazy report-upload flow in Phase 2 so it never weighs down the entry chunk.

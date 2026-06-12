@@ -16,24 +16,24 @@ export const Button: React.FC<ButtonProps> = ({
   ...props
 }) => {
   const baseStyle =
-    "inline-flex items-center justify-center font-medium rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed";
+    "inline-flex items-center justify-center font-semibold rounded-xl transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed";
 
   const variants = {
     primary:
-      "bg-guard-green hover:bg-green-700 text-white focus:ring-green-500 shadow-sm",
+      "bg-primary hover:bg-primary-dark active:bg-primary-dark text-white focus:ring-primary shadow-sm",
     secondary:
-      "bg-white text-gray-700 hover:bg-gray-50 border border-gray-300 focus:ring-green-500 shadow-sm",
+      "bg-surface text-ink-secondary hover:bg-gray-50 border border-gray-200 focus:ring-primary shadow-sm",
     danger:
-      "bg-alert-red hover:bg-red-700 text-white focus:ring-red-500 shadow-sm",
+      "bg-danger hover:bg-red-700 active:bg-red-700 text-white focus:ring-danger shadow-sm",
     outline:
-      "bg-transparent border border-guard-green text-guard-green hover:bg-green-50",
-    blue: "bg-blue-600 hover:bg-blue-700 text-white focus:ring-blue-500 shadow-sm",
+      "bg-transparent border border-primary text-primary hover:bg-primary-light",
+    blue: "bg-info hover:bg-blue-700 text-white focus:ring-info shadow-sm",
   };
 
   const sizes = {
     sm: "px-3 py-1.5 text-sm",
-    md: "px-4 py-2 text-sm",
-    lg: "px-6 py-3 text-base",
+    md: "h-11 px-4 text-sm",
+    lg: "h-12 px-6 text-base",
   };
 
   return (

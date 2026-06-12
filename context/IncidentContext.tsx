@@ -17,6 +17,7 @@ import {
   collection,
   query,
   orderBy,
+  limit,
   onSnapshot,
   setDoc,
   doc,
@@ -76,9 +77,14 @@ export const IncidentProvider: React.FC<{ children: ReactNode }> = ({
       // We will sort client-side instead.
       q = query(collection(db, "incidents"), where("userId", "==", user.uid));
     } else {
-      // Admins & Agencies see ALL incicents
-      console.log("🌎 Admin/Agency detected - Fetching ALL incidents");
-      q = query(collection(db, "incidents"), orderBy("timestamp", "desc"));
+      // Admins & Agencies see the most recent incidents.
+      // Bounded read: never stream the whole collection to a client
+      // (Phase 2 moves aggregate stats to a Cloud Function-maintained doc).
+      q = query(
+        collection(db, "incidents"),
+        orderBy("timestamp", "desc"),
+        limit(200)
+      );
     }
 
     // Subscribe to updates

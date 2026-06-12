@@ -3,9 +3,8 @@ import { useIncidents } from "../context/IncidentContext";
 import { IncidentMap } from "./IncidentMap";
 import { UserManagement } from "./UserManagement";
 import { AgencyManagement } from "./AgencyManagement";
-import { fetchLiveSecurityNews } from "../services/geminiService";
-import { collection, query, where, onSnapshot } from "firebase/firestore";
-import { db } from "../services/firebase";
+import { fetchLiveSecurityNews } from "../services/aiService";
+import { api } from "../services/api";
 import {
   BarChart,
   Bar,
@@ -85,19 +84,23 @@ export const AdminDashboard: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
-  // Fetch active agencies count
+  // Fetch active agencies count (polled)
   useEffect(() => {
-    const q = query(
-      collection(db, "users"),
-      where("role", "==", "agency"),
-      where("isActive", "==", true)
-    );
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      setActiveAgencies(snapshot.size);
-    });
-
-    return () => unsubscribe();
+    let active = true;
+    const load = async () => {
+      try {
+        const stats = await api.get<{ activeAgencies: number }>("/users/stats");
+        if (active) setActiveAgencies(stats.activeAgencies);
+      } catch {
+        // offline — keep last value
+      }
+    };
+    load();
+    const interval = setInterval(load, 60_000);
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
   }, []);
 
   // Fetch Live News on Mount

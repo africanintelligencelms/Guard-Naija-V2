@@ -60,7 +60,7 @@ export interface NewIncidentPayload {
   timestamp: number;
 }
 
-export interface GeminiAnalysisResult {
+export interface AIAnalysisResult {
   suggestedType: IncidentType;
   severityScore: number; // 1-10
   severityLevel: SeverityLevel;

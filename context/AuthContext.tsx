@@ -5,19 +5,17 @@ import React, {
   useEffect,
   ReactNode,
 } from "react";
-import {
-  signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
-  signOut,
-  onAuthStateChanged,
-  User,
-} from "firebase/auth";
-import { doc, getDoc, setDoc } from "firebase/firestore";
-import { auth, db } from "../services/firebase";
+import { api, getToken, setToken, UNAUTHORIZED_EVENT } from "../services/api";
 import { UserRole, UserProfile } from "../types";
 
+/** Minimal session identity (replaces the old firebase User object). */
+export interface SessionUser {
+  uid: string;
+  email: string;
+}
+
 interface AuthContextType {
-  user: User | null;
+  user: SessionUser | null;
   userProfile: UserProfile | null;
   role: UserRole | null;
   login: (
@@ -38,39 +36,50 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+interface AuthResponse {
+  token: string;
+  profile: UserProfile;
+}
+
+const ROLE_NAMES: Record<UserRole, string> = {
+  citizen: "Citizen",
+  agency: "Agency",
+  admin: "Admin",
+};
+
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({
   children,
 }) => {
-  const [user, setUser] = useState<User | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Listen to auth state changes
+  // Restore session from stored token
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      setUser(firebaseUser);
-
-      if (firebaseUser) {
-        // Fetch user profile from Firestore
-        try {
-          const userDoc = await getDoc(doc(db, "users", firebaseUser.uid));
-          if (userDoc.exists()) {
-            setUserProfile(userDoc.data() as UserProfile);
-          } else {
-            console.log("No profile found for user, clearing profile state");
-            setUserProfile(null);
-          }
-        } catch (error) {
-          console.error("Error fetching user profile:", error);
-        }
-      } else {
-        setUserProfile(null);
+    let cancelled = false;
+    const restore = async () => {
+      if (!getToken()) {
+        setIsLoading(false);
+        return;
       }
+      try {
+        const { profile } = await api.get<{ profile: UserProfile }>("/auth/me");
+        if (!cancelled) setUserProfile(profile);
+      } catch {
+        // Offline with a stored token: keep the session optimistic rather
+        // than logging the user out; a real 401 clears the token via event.
+        if (!cancelled && !getToken()) setUserProfile(null);
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
+    };
+    restore();
 
-      setIsLoading(false);
-    });
-
-    return () => unsubscribe();
+    const onUnauthorized = () => setUserProfile(null);
+    window.addEventListener(UNAUTHORIZED_EVENT, onUnauthorized);
+    return () => {
+      cancelled = true;
+      window.removeEventListener(UNAUTHORIZED_EVENT, onUnauthorized);
+    };
   }, []);
 
   const signup = async (
@@ -79,31 +88,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
     role: UserRole,
     additionalData?: Partial<UserProfile>
   ) => {
-    try {
-      const userCredential = await createUserWithEmailAndPassword(
-        auth,
-        email,
-        password
-      );
-      const newUser = userCredential.user;
-
-      // Create user profile in Firestore
-      const profile: UserProfile = {
-        uid: newUser.uid,
-        email: newUser.email!,
-        role,
-        createdAt: Date.now(),
-        lastLogin: Date.now(),
-        isActive: true,
-        ...additionalData,
-      };
-
-      await setDoc(doc(db, "users", newUser.uid), profile);
-      setUserProfile(profile);
-    } catch (error: any) {
-      console.error("Signup error:", error);
-      throw new Error(error.message || "Failed to create account");
-    }
+    const { token, profile } = await api.post<AuthResponse>("/auth/register", {
+      email,
+      password,
+      role,
+      ...additionalData,
+    });
+    setToken(token);
+    setUserProfile(profile);
   };
 
   const login = async (
@@ -111,93 +103,37 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
     password: string,
     expectedRole?: UserRole
   ) => {
-    try {
-      const userCredential = await signInWithEmailAndPassword(
-        auth,
-        email,
-        password
+    const { token, profile } = await api.post<AuthResponse>("/auth/login", {
+      email,
+      password,
+    });
+    if (expectedRole && profile.role !== expectedRole) {
+      throw new Error(
+        `This account is registered as ${ROLE_NAMES[profile.role]}. ` +
+          `Please use the ${ROLE_NAMES[profile.role]} login portal.`
       );
-      const loggedInUser = userCredential.user;
-
-      // Fetch and update user profile
-      const userDoc = await getDoc(doc(db, "users", loggedInUser.uid));
-      if (userDoc.exists()) {
-        const profile = userDoc.data() as UserProfile;
-
-        // Validate role if expectedRole is provided
-        if (expectedRole && profile.role !== expectedRole) {
-          await signOut(auth);
-          const roleNames = {
-            citizen: "Citizen",
-            agency: "Agency",
-            admin: "Admin",
-          };
-          throw new Error(
-            `This account is registered as ${
-              roleNames[profile.role]
-            }. Please use the ${roleNames[profile.role]} login portal.`
-          );
-        }
-
-        // Update last login
-        await setDoc(doc(db, "users", loggedInUser.uid), {
-          ...profile,
-          lastLogin: Date.now(),
-        });
-
-        setUserProfile(profile);
-      } else {
-        // Sign out if profile doesn't exist
-        await signOut(auth);
-        throw new Error(
-          "User profile not found in database. Please contact support."
-        );
-      }
-    } catch (error: any) {
-      console.error("Login error:", error);
-
-      // Provide user-friendly error messages
-      if (
-        error.code === "auth/user-not-found" ||
-        error.code === "auth/wrong-password" ||
-        error.code === "auth/invalid-credential"
-      ) {
-        throw new Error("Incorrect email or password. Please try again.");
-      } else if (error.code === "auth/invalid-email") {
-        throw new Error("Invalid email address format.");
-      } else if (error.code === "auth/too-many-requests") {
-        throw new Error(
-          "Too many failed login attempts. Please try again later."
-        );
-      } else if (error.message) {
-        throw new Error(error.message);
-      } else {
-        throw new Error("Failed to login. Please try again.");
-      }
     }
+    setToken(token);
+    setUserProfile(profile);
   };
 
   const logout = async () => {
-    try {
-      await signOut(auth);
-      setUser(null);
-      setUserProfile(null);
-    } catch (error) {
-      console.error("Logout error:", error);
-      throw error;
-    }
+    setToken(null);
+    setUserProfile(null);
   };
 
   return (
     <AuthContext.Provider
       value={{
-        user,
+        user: userProfile
+          ? { uid: userProfile.uid, email: userProfile.email }
+          : null,
         userProfile,
         role: userProfile?.role || null,
         login,
         signup,
         logout,
-        isAuthenticated: !!user,
+        isAuthenticated: !!userProfile,
         isLoading,
       }}
     >

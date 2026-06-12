@@ -1,15 +1,5 @@
-import React, { useState, useEffect } from "react";
-import {
-  collection,
-  query,
-  onSnapshot,
-  doc,
-  updateDoc,
-  deleteDoc,
-  setDoc,
-} from "firebase/firestore";
-import { createUserWithEmailAndPassword } from "firebase/auth";
-import { db, auth } from "../services/firebase";
+import React, { useState, useEffect, useCallback } from "react";
+import { api } from "../services/api";
 import { UserProfile, UserRole } from "../types";
 import {
   Users,
@@ -37,20 +27,19 @@ export const UserManagement: React.FC = () => {
   const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Fetch users from Firestore
-  useEffect(() => {
-    const q = query(collection(db, "users"));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const userList: UserProfile[] = [];
-      snapshot.forEach((doc) => {
-        userList.push(doc.data() as UserProfile);
-      });
+  // Fetch users from the API (refreshed after each mutation)
+  const loadUsers = useCallback(async () => {
+    try {
+      const userList = await api.get<UserProfile[]>("/users");
       setUsers(userList);
-      setFilteredUsers(userList);
-    });
-
-    return () => unsubscribe();
+    } catch (error) {
+      console.error("Error fetching users:", error);
+    }
   }, []);
+
+  useEffect(() => {
+    loadUsers();
+  }, [loadUsers]);
 
   // Filter users
   useEffect(() => {
@@ -76,9 +65,8 @@ export const UserManagement: React.FC = () => {
 
   const handleToggleActive = async (user: UserProfile) => {
     try {
-      await updateDoc(doc(db, "users", user.uid), {
-        isActive: !user.isActive,
-      });
+      await api.patch(`/users/${user.uid}`, { isActive: !user.isActive });
+      await loadUsers();
     } catch (error) {
       console.error("Error toggling user status:", error);
       alert("Failed to update user status");
@@ -95,7 +83,8 @@ export const UserManagement: React.FC = () => {
     }
 
     try {
-      await deleteDoc(doc(db, "users", user.uid));
+      await api.del(`/users/${user.uid}`);
+      await loadUsers();
       alert("User deleted successfully");
     } catch (error) {
       console.error("Error deleting user:", error);
@@ -327,6 +316,7 @@ export const UserManagement: React.FC = () => {
           onClose={() => {
             setShowAddModal(false);
             setEditingUser(null);
+            loadUsers();
           }}
         />
       )}
@@ -358,44 +348,35 @@ const UserModal: React.FC<{
     setIsLoading(true);
 
     try {
+      const agencyFields =
+        formData.role === "agency"
+          ? {
+              agencyName: formData.agencyName,
+              agencyLocation: formData.agencyLocation,
+              agencyType: formData.agencyType,
+            }
+          : {};
+
       if (user) {
         // Update existing user
-        await updateDoc(doc(db, "users", user.uid), {
+        await api.patch(`/users/${user.uid}`, {
           displayName: formData.displayName,
           phoneNumber: formData.phoneNumber,
           role: formData.role,
-          ...(formData.role === "agency" && {
-            agencyName: formData.agencyName,
-            agencyLocation: formData.agencyLocation,
-            agencyType: formData.agencyType,
-          }),
+          ...agencyFields,
         });
         alert("User updated successfully");
       } else {
-        // Create new user
-        const userCredential = await createUserWithEmailAndPassword(
-          auth,
-          formData.email,
-          formData.password
-        );
-        const newUser = userCredential.user;
-
-        const profile: UserProfile = {
-          uid: newUser.uid,
+        // Create new user (admin endpoint — no more side-effect of being
+        // signed in as the newly created user, unlike the old Firebase flow)
+        await api.post("/users", {
           email: formData.email,
+          password: formData.password,
           role: formData.role,
           displayName: formData.displayName,
           phoneNumber: formData.phoneNumber,
-          createdAt: Date.now(),
-          isActive: true,
-          ...(formData.role === "agency" && {
-            agencyName: formData.agencyName,
-            agencyLocation: formData.agencyLocation,
-            agencyType: formData.agencyType,
-          }),
-        };
-
-        await setDoc(doc(db, "users", newUser.uid), profile);
+          ...agencyFields,
+        });
         alert("User created successfully");
       }
       onClose();

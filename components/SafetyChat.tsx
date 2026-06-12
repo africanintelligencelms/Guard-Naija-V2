@@ -1,11 +1,6 @@
-import React, {
-  useState,
-  useRef,
-  useEffect,
-  useEffect as useLayoutEffect,
-} from "react";
-import { GoogleGenAI, Chat, GenerateContentResponse } from "@google/genai";
-import { MessageCircle, X, Send, Shield, Loader2, Bot } from "lucide-react";
+import React, { useState, useRef, useEffect } from "react";
+import { MessageCircle, X, Send, Loader2, Bot } from "lucide-react";
+import { sendSafetyChatMessage } from "../services/aiService";
 
 interface Message {
   id: string;
@@ -24,23 +19,7 @@ export const SafetyChat: React.FC = () => {
     },
   ]);
   const [isLoading, setIsLoading] = useState(false);
-  const chatSessionRef = useRef<Chat | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-
-  // Initialize Chat Session
-  useEffect(() => {
-    const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-    if (apiKey) {
-      const ai = new GoogleGenAI({ apiKey });
-      chatSessionRef.current = ai.chats.create({
-        model: "gemini-2.5-flash",
-        config: {
-          systemInstruction:
-            "You are a calm, helpful security advisor for Nigerian citizens. Provide short, actionable safety advice based on the user's situation. Do not encourage taking the law into their own hands. If it is an emergency, tell them to use the SOS button. Keep responses concise and practical.",
-        },
-      });
-    }
-  }, []);
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -62,23 +41,19 @@ export const SafetyChat: React.FC = () => {
     setIsLoading(true);
 
     try {
-      let responseText =
-        "I'm having trouble connecting. Please check your internet or try again.";
+      // Send recent history (minus the local welcome message) to the API
+      const history = [...messages, userMessage]
+        .filter((m) => m.id !== "welcome")
+        .slice(-10)
+        .map((m) => ({
+          role: m.role === "user" ? ("user" as const) : ("assistant" as const),
+          content: m.text,
+        }));
 
-      if (chatSessionRef.current) {
-        const result: GenerateContentResponse =
-          await chatSessionRef.current.sendMessage({
-            message: userMessage.text,
-          });
-        if (result.text) {
-          responseText = result.text;
-        }
-      } else {
-        // Fallback if no API key or init failed (Mock response for demo)
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-        responseText =
-          "I am running in demo mode (API Key missing). In a real emergency, please find cover and contact authorities.";
-      }
+      const reply = await sendSafetyChatMessage(history);
+      const responseText =
+        reply ||
+        "I can't reach the safety assistant right now. If you are in danger, use the SOS button or call 112.";
 
       const botMessage: Message = {
         id: (Date.now() + 1).toString(),

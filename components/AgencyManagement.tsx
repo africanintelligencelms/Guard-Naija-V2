@@ -1,13 +1,5 @@
-import React, { useState, useEffect } from "react";
-import {
-  collection,
-  query,
-  where,
-  onSnapshot,
-  doc,
-  updateDoc,
-} from "firebase/firestore";
-import { db } from "../services/firebase";
+import React, { useState, useEffect, useCallback } from "react";
+import { api } from "../services/api";
 import { UserProfile } from "../types";
 import {
   Building,
@@ -31,20 +23,19 @@ export const AgencyManagement: React.FC = () => {
   >("all");
   const [editingAgency, setEditingAgency] = useState<UserProfile | null>(null);
 
-  // Fetch agencies from Firestore
-  useEffect(() => {
-    const q = query(collection(db, "users"), where("role", "==", "agency"));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const agencyList: UserProfile[] = [];
-      snapshot.forEach((doc) => {
-        agencyList.push(doc.data() as UserProfile);
-      });
+  // Fetch agencies from the API (refreshed after each mutation)
+  const loadAgencies = useCallback(async () => {
+    try {
+      const agencyList = await api.get<UserProfile[]>("/users?role=agency");
       setAgencies(agencyList);
-      setFilteredAgencies(agencyList);
-    });
-
-    return () => unsubscribe();
+    } catch (error) {
+      console.error("Error fetching agencies:", error);
+    }
   }, []);
+
+  useEffect(() => {
+    loadAgencies();
+  }, [loadAgencies]);
 
   // Filter agencies
   useEffect(() => {
@@ -72,9 +63,8 @@ export const AgencyManagement: React.FC = () => {
 
   const handleToggleStatus = async (agency: UserProfile) => {
     try {
-      await updateDoc(doc(db, "users", agency.uid), {
-        isActive: !agency.isActive,
-      });
+      await api.patch(`/users/${agency.uid}`, { isActive: !agency.isActive });
+      await loadAgencies();
     } catch (error) {
       console.error("Error toggling agency status:", error);
       alert("Failed to update agency status");
@@ -292,7 +282,10 @@ export const AgencyManagement: React.FC = () => {
       {editingAgency && (
         <AgencyEditModal
           agency={editingAgency}
-          onClose={() => setEditingAgency(null)}
+          onClose={() => {
+            setEditingAgency(null);
+            loadAgencies();
+          }}
         />
       )}
     </div>
@@ -318,7 +311,7 @@ const AgencyEditModal: React.FC<{
     setIsLoading(true);
 
     try {
-      await updateDoc(doc(db, "users", agency.uid), formData);
+      await api.patch(`/users/${agency.uid}`, formData);
       alert("Agency updated successfully");
       onClose();
     } catch (error) {

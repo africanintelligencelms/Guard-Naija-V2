@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import { Button } from './Button';
 import { IncidentType, SeverityLevel, NewIncidentPayload } from '../types';
 import { INCIDENT_CATEGORIES } from '../constants';
-import { analyzeIncidentDescription } from '../services/geminiService';
+import { analyzeIncidentDescription } from '../services/aiService';
 import { MapPin, Camera, Mic, ShieldCheck, Info, Loader2, X, Check, FileImage, FileAudio } from 'lucide-react';
 
 interface IncidentFormProps {
